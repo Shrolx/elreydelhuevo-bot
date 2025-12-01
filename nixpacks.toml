@@ -1,0 +1,16 @@
+[phases.setup]
+cmds = ["apt-get update"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm run build --if-present"]
+
+[start]
+cmd = "node index.js"
+
+[environment]
+PORT = "3000"
+NODE_ENV = "production"
+TZ = "America/Santiago"
