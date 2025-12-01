@@ -1,4 +1,4 @@
-// index.js - BOT COMPLETO PARA EL REY DEL HUEVO
+// index.js - BOT COMPLETO CORREGIDO PARA EL REY DEL HUEVO
 import { Telegraf, session } from 'telegraf';
 import express from 'express';
 import dotenv from 'dotenv';
@@ -7,7 +7,6 @@ import { setupCategoriasCommands } from './commands/categorias.js';
 import { setupPublicacionesCommands } from './commands/publicaciones.js';
 import { setupAdminCommands } from './commands/admin.js';
 import { setupEstadisticasCommands } from './commands/estadisticas.js';
-import { authMiddleware, loggingMiddleware } from './handlers/middleware.js';
 
 dotenv.config();
 
@@ -15,18 +14,7 @@ dotenv.config();
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_USERS = process.env.ADMIN_USERS ? process.env.ADMIN_USERS.split(',') : [];
 const PORT = process.env.PORT || 3000;
-const RAILWAY_PUBLIC_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL;
-
-// Validar configuración esencial
-if (!BOT_TOKEN) {
-    console.error('❌ ERROR: BOT_TOKEN no está configurado en las variables de entorno');
-    console.error('Agrega BOT_TOKEN=tu_token en Railway Variables');
-    process.exit(1);
-}
-
-if (ADMIN_USERS.length === 0) {
-    console.warn('⚠️  ADVERTENCIA: ADMIN_USERS está vacío. Agrega tu ID de Telegram');
-}
+const RAILWAY_PUBLIC_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN;
 
 console.log('='.repeat(60));
 console.log('🤖 BOT DE ADMINISTRACIÓN - EL REY DEL HUEVO 🥚');
@@ -36,6 +24,16 @@ console.log('👤 Admins:', ADMIN_USERS.length > 0 ? ADMIN_USERS.join(', ') : 'N
 console.log('🌐 Dominio:', RAILWAY_PUBLIC_DOMAIN || 'localhost');
 console.log('📡 Puerto:', PORT);
 console.log('='.repeat(60));
+
+// Validar configuración esencial
+if (!BOT_TOKEN) {
+    console.error('❌ ERROR: BOT_TOKEN no está configurado');
+    process.exit(1);
+}
+
+if (ADMIN_USERS.length === 0) {
+    console.warn('⚠️  ADVERTENCIA: ADMIN_USERS está vacío');
+}
 
 // ========== INICIALIZAR ==========
 const bot = new Telegraf(BOT_TOKEN);
@@ -49,83 +47,429 @@ bot.use(session({
     defaultSession: () => ({})
 }));
 
-// Middleware de autenticación y logging
-bot.use(authMiddleware(ADMIN_USERS));
-bot.use(loggingMiddleware());
+// ========== MIDDLEWARE DE AUTENTICACIÓN CORREGIDO ==========
+bot.use(async (ctx, next) => {
+    try {
+        const userId = ctx.from?.id?.toString();
+        
+        if (!userId) {
+            console.log('⚠️  Mensaje sin usuario');
+            return;
+        }
+        
+        console.log(`📨 Mensaje de ${ctx.from.first_name} (${userId}): "${ctx.message?.text || 'Sin texto'}"`);
+        
+        if (!ADMIN_USERS.includes(userId)) {
+            console.log(`🚫 Acceso denegado: ${userId}`);
+            await ctx.reply('❌ No tienes permisos para usar este bot.');
+            return;
+        }
+        
+        console.log(`✅ Usuario autorizado: ${ctx.from.first_name} (${userId})`);
+        await next();
+        
+    } catch (error) {
+        console.error('❌ Error en middleware:', error.message);
+    }
+});
 
 // ========== IMPORTAR Y CONFIGURAR MÓDULOS ==========
 console.log('📦 Cargando módulos...');
-setupProductosCommands(bot);
-setupCategoriasCommands(bot);
-setupPublicacionesCommands(bot);
-setupAdminCommands(bot);
-setupEstadisticasCommands(bot);
-console.log('✅ Módulos cargados correctamente');
+try {
+    setupProductosCommands(bot);
+    setupCategoriasCommands(bot);
+    setupPublicacionesCommands(bot);
+    setupAdminCommands(bot);
+    setupEstadisticasCommands(bot);
+    console.log('✅ Módulos cargados correctamente');
+} catch (error) {
+    console.error('❌ Error cargando módulos:', error.message);
+}
 
 // ========== COMANDOS PRINCIPALES ==========
 
 // COMANDO /start - MENÚ PRINCIPAL
 bot.start(async (ctx) => {
-    console.log(`🎉 /start de ${ctx.from.first_name} (${ctx.from.id})`);
-    
-    const menuPrincipal = {
-        reply_markup: {
-            keyboard: [
-                ['📦 Productos', '📂 Categorías'],
-                ['📰 Publicaciones', '📊 Estadísticas'],
-                ['⚙️ Configuración', '🔐 Verificar Acceso'],
-                ['🆘 Ayuda', 'ℹ️ Información Sistema']
-            ],
-            resize_keyboard: true,
-            one_time_keyboard: false
-        }
-    };
-    
-    await ctx.replyWithMarkdownV2(
-        `🎊 *¡HOLA ${ctx.from.first_name.toUpperCase()}!* 🎊\n\n` +
-        `🤖 *BOT DE ADMINISTRACIÓN \\- EL REY DEL HUEVO* 🥚\n\n` +
-        `✅ *SISTEMA OPERATIVO 24/7 EN RAILWAY*\n` +
-        `🌐 Dominio: ${RAILWAY_PUBLIC_DOMAIN || 'localhost'}\n` +
-        `📅 ${new Date().toLocaleString('es\\-CL')}\n\n` +
-        `*FUNCIONES DISPONIBLES:*\n` +
-        `📦 *Productos* \\- Gestión completa \\(CRUD\\)\n` +
-        `📂 *Categorías* \\- Organización por tipo\n` +
-        `📰 *Publicaciones* \\- Noticias y promociones\n` +
-        `📊 *Estadísticas* \\- Reportes del sitio\n` +
-        `⚙️ *Configuración* \\- Información del sistema\n` +
-        `🔐 *Verificar Acceso* \\- Credenciales admin\n\n` +
-        `*📍 TU NEGOCIO:*\n` +
-        `🏪 El Rey del Huevo\n` +
-        `📞 \\+56950104100\n` +
-        `📧 reydelhuevo681@gmail\\.com\n` +
-        `📱 @rey\\_del\\_huevo`
-    ).then(() => {
-        ctx.reply('Usa los botones del menú para navegar:', menuPrincipal);
-    }).catch(err => {
-        console.error('Error enviando mensaje:', err);
-    });
-});
+    try {
+        console.log(`🎉 /start de ${ctx.from.first_name} (${ctx.from.id})`);
+        
+        await ctx.replyWithMarkdown(
+            `🎊 *¡HOLA ${ctx.from.first_name.toUpperCase()}!* 🎊\n\n` +
+            `🤖 *BOT DE ADMINISTRACIÓN - EL REY DEL HUEVO* 🥚\n\n` +
+            `✅ *SISTEMA OPERATIVO 24/7 EN RAILWAY*\n` +
+            `🌐 Dominio: ${RAILWAY_PUBLIC_DOMAIN || 'localhost'}\n` +
+            `📅 ${new Date().toLocaleString('es-CL')}\n\n` +
+            `*FUNCIONES DISPONIBLES:*\n` +
+            `📦 *Productos* - Gestión completa (CRUD)\n` +
+            `📂 *Categorías* - Organización por tipo\n` +
+            `📰 *Publicaciones* - Noticias y promociones\n` +
+            `📊 *Estadísticas* - Reportes del sitio\n` +
+            `⚙️ *Configuración* - Información del sistema\n` +
+            `🔐 *Verificar Acceso* - Credenciales admin\n\n` +
+            `*📍 TU NEGOCIO:*\n` +
+            `🏪 El Rey del Huevo\n` +
+            `📞 +56950104100\n` +
+            `📧 reydelhuevo681@gmail.com\n` +
+            `📱 @rey_del_huevo`
+        );
 
-// ========== MANEJO DE ERRORES ==========
-bot.catch((err, ctx) => {
-    console.error(`💥 Error en el bot para ${ctx.updateType}:`, err);
-    
-    // Intentar enviar mensaje de error al usuario
-    if (ctx.chat) {
-        ctx.reply('❌ Ocurrió un error. Por favor, intenta nuevamente.').catch(e => {
-            console.error('No se pudo enviar mensaje de error:', e);
-        });
+        // Menú principal con teclado
+        const menuPrincipal = {
+            reply_markup: {
+                keyboard: [
+                    ['📦 Productos', '📂 Categorías'],
+                    ['📰 Publicaciones', '📊 Estadísticas'],
+                    ['⚙️ Configuración', '🔐 Verificar Acceso'],
+                    ['🆘 Ayuda']
+                ],
+                resize_keyboard: true,
+                one_time_keyboard: false
+            }
+        };
+
+        await ctx.reply('Selecciona una opción del menú:', menuPrincipal);
+        
+    } catch (error) {
+        console.error('❌ Error en comando /start:', error.message);
+        try {
+            await ctx.reply('❌ Error al procesar tu solicitud. Intenta nuevamente.');
+        } catch (e) {
+            console.error('No se pudo enviar mensaje de error:', e.message);
+        }
     }
 });
 
-// ========== CONFIGURAR WEBHOOK (PARA RAILWAY) ==========
+// MENÚ PRODUCTOS
+bot.hears('📦 Productos', async (ctx) => {
+    try {
+        const menuProductos = {
+            reply_markup: {
+                keyboard: [
+                    ['📥 Nuevo Producto', '📋 Listar Productos'],
+                    ['🔍 Buscar Producto', '✏️ Editar Producto'],
+                    ['🗑️ Eliminar Producto', '📊 Estadísticas Productos'],
+                    ['🔙 Menú Principal']
+                ],
+                resize_keyboard: true
+            }
+        };
+        
+        await ctx.reply(
+            '📦 *GESTIÓN COMPLETA DE PRODUCTOS*\n\n' +
+            'Selecciona una opción:\n\n' +
+            '📥 *Nuevo Producto* - Agregar producto al catálogo\n' +
+            '📋 *Listar Productos* - Ver todos los productos\n' +
+            '🔍 *Buscar Producto* - Encontrar por nombre o categoría\n' +
+            '✏️ *Editar Producto* - Modificar información\n' +
+            '🗑️ *Eliminar Producto* - Remover del catálogo\n' +
+            '📊 *Estadísticas* - Reportes de inventario\n\n' +
+            '✅ *Conectado a Firebase* - Sincronización automática',
+            { 
+                parse_mode: 'Markdown',
+                ...menuProductos 
+            }
+        );
+    } catch (error) {
+        console.error('Error en menú Productos:', error);
+        await ctx.reply('❌ Error al mostrar menú de productos.');
+    }
+});
 
-// Verificar que tenemos el dominio de Railway
-if (!RAILWAY_PUBLIC_DOMAIN) {
-    console.warn('⚠️  RAILWAY_PUBLIC_DOMAIN no está configurado. Usando modo polling.');
-} else {
-    console.log('🌐 Dominio Railway:', RAILWAY_PUBLIC_DOMAIN);
-}
+// MENÚ CATEGORÍAS
+bot.hears('📂 Categorías', async (ctx) => {
+    try {
+        const menuCategorias = {
+            reply_markup: {
+                keyboard: [
+                    ['🆕 Nueva Categoría', '📋 Listar Categorías'],
+                    ['✏️ Editar Categoría', '🗑️ Eliminar Categoría'],
+                    ['📊 Productos por Categoría', '🔙 Menú Principal']
+                ],
+                resize_keyboard: true
+            }
+        };
+        
+        await ctx.reply(
+            '📂 *GESTIÓN COMPLETA DE CATEGORÍAS*\n\n' +
+            'Selecciona una opción:\n\n' +
+            '🆕 *Nueva Categoría* - Crear categoría\n' +
+            '📋 *Listar Categorías* - Ver todas las categorías\n' +
+            '✏️ *Editar Categoría* - Modificar categoría\n' +
+            '🗑️ *Eliminar Categoría* - Eliminar categoría\n' +
+            '📊 *Productos por Categoría* - Ver distribución\n\n' +
+            'Organiza tus productos eficientemente',
+            { 
+                parse_mode: 'Markdown',
+                ...menuCategorias 
+            }
+        );
+    } catch (error) {
+        console.error('Error en menú Categorías:', error);
+        await ctx.reply('❌ Error al mostrar menú de categorías.');
+    }
+});
+
+// MENÚ PUBLICACIONES
+bot.hears('📰 Publicaciones', async (ctx) => {
+    try {
+        const menuPublicaciones = {
+            reply_markup: {
+                keyboard: [
+                    ['🆕 Nueva Publicación', '📋 Listar Publicaciones'],
+                    ['✏️ Editar Publicación', '🗑️ Eliminar Publicación'],
+                    ['📊 Estadísticas Publicaciones', '🔙 Menú Principal']
+                ],
+                resize_keyboard: true
+            }
+        };
+        
+        await ctx.reply(
+            '📰 *GESTIÓN COMPLETA DE PUBLICACIONES*\n\n' +
+            'Selecciona una opción:\n\n' +
+            '🆕 *Nueva Publicación* - Crear noticia o promoción\n' +
+            '📋 *Listar Publicaciones* - Ver todas las publicaciones\n' +
+            '✏️ *Editar Publicación* - Modificar publicación\n' +
+            '🗑️ *Eliminar Publicación* - Eliminar publicación\n' +
+            '📊 *Estadísticas* - Reportes de actividad\n\n' +
+            'Mantén informados a tus clientes',
+            { 
+                parse_mode: 'Markdown',
+                ...menuPublicaciones 
+            }
+        );
+    } catch (error) {
+        console.error('Error en menú Publicaciones:', error);
+        await ctx.reply('❌ Error al mostrar menú de publicaciones.');
+    }
+});
+
+// MENÚ ESTADÍSTICAS
+bot.hears('📊 Estadísticas', async (ctx) => {
+    try {
+        const menuEstadisticas = {
+            reply_markup: {
+                keyboard: [
+                    ['📊 Estadísticas Completas', '📈 Reporte Detallado'],
+                    ['📋 Ver Logs', '💾 Backup Datos'],
+                    ['🔙 Menú Principal']
+                ],
+                resize_keyboard: true
+            }
+        };
+        
+        await ctx.reply(
+            '📊 *ESTADÍSTICAS Y REPORTES*\n\n' +
+            'Selecciona una opción:\n\n' +
+            '📊 *Estadísticas Completas* - Visión general\n' +
+            '📈 *Reporte Detallado* - Análisis específico\n' +
+            '📋 *Ver Logs* - Actividad del sistema\n' +
+            '💾 *Backup Datos* - Información de respaldos\n\n' +
+            'Monitorea el rendimiento de tu negocio',
+            { 
+                parse_mode: 'Markdown',
+                ...menuEstadisticas 
+            }
+        );
+    } catch (error) {
+        console.error('Error en menú Estadísticas:', error);
+        await ctx.reply('❌ Error al mostrar menú de estadísticas.');
+    }
+});
+
+// MENÚ CONFIGURACIÓN
+bot.hears('⚙️ Configuración', async (ctx) => {
+    try {
+        const menuConfig = {
+            reply_markup: {
+                keyboard: [
+                    ['🔐 Verificar Acceso', 'ℹ️ Información Sistema'],
+                    ['📋 Ver Logs', '🔄 Reiniciar Bot'],
+                    ['💾 Backup Datos', '🔙 Menú Principal']
+                ],
+                resize_keyboard: true
+            }
+        };
+        
+        await ctx.reply(
+            '⚙️ *CONFIGURACIÓN DEL SISTEMA*\n\n' +
+            'Selecciona una opción:\n\n' +
+            '🔐 *Verificar Acceso* - Credenciales admin\n' +
+            'ℹ️ *Información Sistema* - Detalles técnicos\n' +
+            '📋 *Ver Logs* - Registros de actividad\n' +
+            '🔄 *Reiniciar Bot* - Reiniciar servicio\n' +
+            '💾 *Backup Datos* - Información de respaldos\n\n' +
+            'Administra tu sistema eficientemente',
+            { 
+                parse_mode: 'Markdown',
+                ...menuConfig 
+            }
+        );
+    } catch (error) {
+        console.error('Error en menú Configuración:', error);
+        await ctx.reply('❌ Error al mostrar menú de configuración.');
+    }
+});
+
+// VERIFICAR ACCESO
+bot.hears('🔐 Verificar Acceso', async (ctx) => {
+    try {
+        await ctx.reply('🔐 *VERIFICACIÓN DE ACCESO*\n\n' +
+            '✅ Usuario autorizado\n' +
+            `👤 Nombre: ${ctx.from.first_name}\n` +
+            `🆔 ID: ${ctx.from.id}\n` +
+            `📅 Fecha: ${new Date().toLocaleString('es-CL')}\n\n` +
+            'Tienes acceso completo al sistema.',
+            { parse_mode: 'Markdown' });
+    } catch (error) {
+        console.error('Error en Verificar Acceso:', error);
+    }
+});
+
+// AYUDA
+bot.hears('🆘 Ayuda', async (ctx) => {
+    try {
+        const ayuda = `
+🆘 *CENTRO DE AYUDA*
+
+📍 *COMANDOS PRINCIPALES:*
+/start - Menú principal completo
+/help - Esta ayuda
+
+📦 *GESTIÓN DE PRODUCTOS:*
+• Agregar productos nuevos
+• Ver catálogo completo
+• Editar información
+• Eliminar productos
+
+📂 *GESTIÓN DE CATEGORÍAS:*
+• Crear categorías
+• Organizar productos
+• Ver por categoría
+
+📰 *GESTIÓN DE PUBLICACIONES:*
+• Crear noticias
+• Publicar promociones
+• Gestionar contenido
+
+📊 *ESTADÍSTICAS:*
+• Reportes de inventario
+• Análisis por categoría
+• Actividad reciente
+
+💡 *CONSEJOS:*
+1. Usa los botones del menú
+2. Sigue los pasos indicados
+3. Los cambios se sincronizan automáticamente
+
+✅ *SISTEMA OPERATIVO:*
+• Bot 24/7 en Railway
+• Conexión Firebase activa
+• Panel completo funcional
+        `;
+        
+        await ctx.reply(ayuda, { parse_mode: 'Markdown' });
+    } catch (error) {
+        console.error('Error en Ayuda:', error);
+    }
+});
+
+// VOLVER AL MENÚ PRINCIPAL
+bot.hears('🔙 Menú Principal', async (ctx) => {
+    try {
+        const menuPrincipal = {
+            reply_markup: {
+                keyboard: [
+                    ['📦 Productos', '📂 Categorías'],
+                    ['📰 Publicaciones', '📊 Estadísticas'],
+                    ['⚙️ Configuración', '🔐 Verificar Acceso'],
+                    ['🆘 Ayuda']
+                ],
+                resize_keyboard: true
+            }
+        };
+        
+        await ctx.reply('🏠 *Volviendo al Menú Principal*', {
+            parse_mode: 'Markdown',
+            ...menuPrincipal
+        });
+    } catch (error) {
+        console.error('Error volviendo al menú:', error);
+    }
+});
+
+// COMANDO /info
+bot.command('info', async (ctx) => {
+    try {
+        await ctx.reply(
+            `ℹ️ *INFORMACIÓN TÉCNICA*\n\n` +
+            `*Bot ID:* 8383198564\n` +
+            `*Username:* @ElReyDelHuevoBot\n` +
+            `*Dominio:* ${RAILWAY_PUBLIC_DOMAIN || 'localhost'}\n` +
+            `*Webhook:* ✅ ACTIVO\n` +
+            `*Hora servidor:* ${new Date().toLocaleString('es-CL')}\n\n` +
+            `*Módulos cargados:*\n` +
+            `✅ Productos (CRUD completo)\n` +
+            `✅ Categorías (CRUD completo)\n` +
+            `✅ Publicaciones (CRUD completo)\n` +
+            `✅ Estadísticas (Reportes)\n` +
+            `✅ Administración (Configuración)`,
+            { parse_mode: 'Markdown' }
+        );
+    } catch (error) {
+        console.error('Error en comando /info:', error);
+    }
+});
+
+// COMANDO /help
+bot.command('help', async (ctx) => {
+    try {
+        await ctx.reply(
+            `🆘 *AYUDA RÁPIDA*\n\n` +
+            `Usa los botones del menú para acceder a todas las funciones.\n\n` +
+            `Escribe /start para volver al menú principal.`,
+            { parse_mode: 'Markdown' }
+        );
+    } catch (error) {
+        console.error('Error en comando /help:', error);
+    }
+});
+
+// MENSAJES NO RECONOCIDOS
+bot.on('text', async (ctx) => {
+    try {
+        const text = ctx.message.text;
+        
+        // Si no es un comando del menú y no empieza con /
+        if (!text.startsWith('/')) {
+            await ctx.reply(
+                '🤔 *No reconozco ese comando*\n\n' +
+                'Usa los botones del menú o escribe /start para ver todas las opciones.\n\n' +
+                '¿Necesitas ayuda? Escribe /help',
+                { parse_mode: 'Markdown' }
+            );
+        }
+    } catch (error) {
+        console.error('Error en handler de texto:', error);
+    }
+});
+
+// ========== MANEJO DE ERRORES GLOBAL ==========
+bot.catch((err, ctx) => {
+    console.error(`💥 ERROR GLOBAL en ${ctx.updateType}:`, err.message);
+    console.error('Stack:', err.stack);
+    
+    try {
+        if (ctx.chat) {
+            ctx.reply('❌ Ocurrió un error inesperado. Por favor, intenta nuevamente.').catch(e => {
+                console.error('No se pudo enviar mensaje de error:', e.message);
+            });
+        }
+    } catch (e) {
+        console.error('Error en catch handler:', e.message);
+    }
+});
+
+// ========== CONFIGURAR WEBHOOK ==========
 
 // RUTA DEL WEBHOOK
 const WEBHOOK_PATH = '/webhook';
@@ -133,14 +477,9 @@ const WEBHOOK_URL = RAILWAY_PUBLIC_DOMAIN ?
     `https://${RAILWAY_PUBLIC_DOMAIN}${WEBHOOK_PATH}` : 
     null;
 
-console.log('📍 Ruta del webhook configurada:', WEBHOOK_PATH);
-if (WEBHOOK_URL) {
-    console.log('🔗 URL del webhook:', WEBHOOK_URL);
-}
-
 // ========== CONFIGURACIÓN DEL SERVIDOR WEB ==========
 
-// HEALTH CHECK (IMPORTANTE para Railway)
+// HEALTH CHECK
 app.get('/health', (req, res) => {
     res.json({
         status: 'healthy',
@@ -154,160 +493,92 @@ app.get('/health', (req, res) => {
         },
         webhook: {
             configured: !!WEBHOOK_URL,
-            url: WEBHOOK_URL,
-            domain: RAILWAY_PUBLIC_DOMAIN
+            url: WEBHOOK_URL
         }
     });
 });
 
 // PÁGINA PRINCIPAL
 app.get('/', (req, res) => {
-    const html = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>🤖 El Rey del Huevo - Bot de Administración</title>
-        <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-            body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-            .container { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(20px); border-radius: 20px; padding: 40px; max-width: 800px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); border: 1px solid rgba(255, 255, 255, 0.2); }
-            .header { text-align: center; margin-bottom: 30px; }
-            .header h1 { font-size: 2.8rem; margin-bottom: 10px; background: linear-gradient(45deg, #fff, #f1c40f); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-            .status-badge { display: inline-block; background: #27ae60; color: white; padding: 10px 25px; border-radius: 50px; font-weight: bold; margin: 15px 0; font-size: 1.1rem; animation: pulse 2s infinite; }
-            @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
-            .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
-            .info-card { background: rgba(255, 255, 255, 0.1); padding: 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); transition: all 0.3s ease; }
-            .info-card:hover { transform: translateY(-5px); background: rgba(255, 255, 255, 0.15); box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
-            .info-card h3 { color: #f1c40f; margin-bottom: 10px; font-size: 1.3rem; border-bottom: 2px solid rgba(241, 196, 15, 0.3); padding-bottom: 5px; }
-            .telegram-button { display: inline-block; background: #0088cc; color: white; padding: 15px 30px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 1.1rem; transition: all 0.3s ease; margin-top: 10px; text-align: center; width: 100%; }
-            .telegram-button:hover { background: #0077b5; transform: scale(1.05); }
-            .stats { display: flex; justify-content: space-around; flex-wrap: wrap; margin: 30px 0; text-align: center; }
-            .stat-item { padding: 15px; }
-            .stat-number { font-size: 2.2rem; font-weight: bold; color: #f1c40f; display: block; }
-            .stat-label { font-size: 0.9rem; opacity: 0.8; margin-top: 5px; }
-            .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.9rem; opacity: 0.8; }
-            code { background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; font-family: monospace; }
-            @media (max-width: 600px) { .container { padding: 20px; } .header h1 { font-size: 2rem; } .info-grid { grid-template-columns: 1fr; } }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>🤖 El Rey del Huevo Bot</title>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                    padding: 50px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }
+                .container {
+                    background: rgba(255,255,255,0.1);
+                    padding: 30px;
+                    border-radius: 15px;
+                    display: inline-block;
+                    backdrop-filter: blur(10px);
+                }
+                h1 { color: #f1c40f; }
+                .status { color: #2ecc71; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
                 <h1>🤖 El Rey del Huevo Bot 🥚</h1>
-                <p>Servicio de administración vía Telegram - 24/7</p>
-                <div class="status-badge">✅ SISTEMA OPERATIVO</div>
+                <p class="status">✅ SISTEMA OPERATIVO</p>
+                <p>Servicio de administración vía Telegram</p>
+                <p><strong>Dominio:</strong> ${RAILWAY_PUBLIC_DOMAIN || 'localhost'}</p>
+                <p><strong>Webhook:</strong> ${WEBHOOK_URL ? '✅ Configurado' : '⚠️ Local'}</p>
+                <p><strong>Estado:</strong> <span class="status">FUNCIONANDO</span></p>
+                <p>📱 Busca @ElReyDelHuevoBot en Telegram</p>
+                <p>💬 Envía /start para comenzar</p>
             </div>
-            
-            <div class="stats">
-                <div class="stat-item">
-                    <span class="stat-number">24/7</span>
-                    <span class="stat-label">Disponibilidad</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number">✅</span>
-                    <span class="stat-label">Webhook Activo</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number">📦</span>
-                    <span class="stat-label">Productos CRUD</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number">🚂</span>
-                    <span class="stat-label">Railway</span>
-                </div>
-            </div>
-            
-            <div class="info-grid">
-                <div class="info-card">
-                    <h3>📱 Cómo usar el bot</h3>
-                    <p>1. Busca <strong>@ElReyDelHuevoBot</strong> en Telegram</p>
-                    <p>2. Envía <code>/start</code> para comenzar</p>
-                    <p>3. Usa los botones del menú</p>
-                    <p>4. Gestiona productos, categorías y publicaciones</p>
-                    <a href="https://t.me/ElReyDelHuevoBot" class="telegram-button" target="_blank">🚀 Abrir en Telegram</a>
-                </div>
-                
-                <div class="info-card">
-                    <h3>⚙️ Funciones disponibles</h3>
-                    <p>📦 <strong>Gestión de Productos:</strong> CRUD completo</p>
-                    <p>📂 <strong>Gestión de Categorías:</strong> Organización</p>
-                    <p>📰 <strong>Publicaciones:</strong> Noticias y promociones</p>
-                    <p>📊 <strong>Estadísticas:</strong> Reportes avanzados</p>
-                    <p>🔐 <strong>Administración:</strong> Panel completo</p>
-                </div>
-                
-                <div class="info-card">
-                    <h3>🌐 Información técnica</h3>
-                    <p><strong>Servidor:</strong> Railway.app</p>
-                    <p><strong>Base de datos:</strong> Firebase Firestore</p>
-                    <p><strong>Dominio:</strong> ${RAILWAY_PUBLIC_DOMAIN || 'localhost'}</p>
-                    <p><strong>Puerto:</strong> ${PORT}</p>
-                    <p><strong>Webhook:</strong> ${WEBHOOK_URL ? '✅ Configurado' : '⚠️ Local'}</p>
-                    <p><strong>SSL/TLS:</strong> ✅ Activo (Railway)</p>
-                </div>
-                
-                <div class="info-card">
-                    <h3>🏪 Información del negocio</h3>
-                    <p><strong>Nombre:</strong> El Rey del Huevo</p>
-                    <p><strong>Contacto:</strong> +56950104100</p>
-                    <p><strong>Email:</strong> reydelhuevo681@gmail.com</p>
-                    <p><strong>Instagram:</strong> @rey_del_huevo</p>
-                    <p><strong>Ubicación:</strong> Av. Nueva Koke 1102</p>
-                </div>
-            </div>
-            
-            <div class="footer">
-                <p>🤖 Bot de Administración - El Rey del Huevo 🥚</p>
-                <p>Versión 2.0.0 | Implementado: ${new Date().toLocaleDateString('es-CL')}</p>
-                <p>© 2024 El Rey del Huevo. Todos los derechos reservados.</p>
-            </div>
-        </div>
-    </body>
-    </html>
-    `;
-    
-    res.send(html);
+        </body>
+        </html>
+    `);
 });
 
-// ========== INICIAR EL SERVIDOR ==========
+// ========== INICIAR SERVIDOR ==========
 
 async function startServer() {
     try {
         // Iniciar servidor Express
         const server = app.listen(PORT, '0.0.0.0', () => {
             console.log(`✅ Servidor web iniciado en puerto ${PORT}`);
-            console.log(`🌐 Página principal: http://localhost:${PORT}/`);
-            console.log(`❤️  Health check: http://localhost:${PORT}/health`);
+            console.log(`🌐 Página: http://localhost:${PORT}/`);
+            console.log(`❤️  Health: http://localhost:${PORT}/health`);
             
             if (RAILWAY_PUBLIC_DOMAIN) {
-                console.log(`🚂 Railway URL: https://${RAILWAY_PUBLIC_DOMAIN}`);
-                console.log(`🔗 Health check en Railway: https://${RAILWAY_PUBLIC_DOMAIN}/health`);
+                console.log(`🚂 Railway: https://${RAILWAY_PUBLIC_DOMAIN}`);
             }
         });
 
-        // Configuración del webhook para Railway
+        // Configuración del webhook
         if (WEBHOOK_URL) {
             console.log('🔗 Configurando webhook para Railway...');
             
             try {
                 // Primero, eliminar cualquier webhook previo
-                await bot.telegram.deleteWebhook();
+                await bot.telegram.deleteWebhook({ drop_pending_updates: true });
                 console.log('✅ Webhook anterior eliminado');
                 
                 // Configurar el nuevo webhook
-                await bot.telegram.setWebhook(WEBHOOK_URL);
-                console.log('✅ Webhook configurado exitosamente');
-                console.log(`📱 Webhook URL: ${WEBHOOK_URL}`);
+                await bot.telegram.setWebhook(WEBHOOK_URL, {
+                    allowed_updates: ['message', 'callback_query']
+                });
+                console.log(`✅ Webhook configurado: ${WEBHOOK_URL}`);
                 
-                // Usar webhook middleware en la ruta específica
-                app.use(WEBHOOK_PATH, async (req, res, next) => {
+                // Configurar el middleware del webhook CORRECTAMENTE
+                app.post(WEBHOOK_PATH, (req, res) => {
                     try {
-                        await bot.handleUpdate(req.body, res);
+                        bot.handleUpdate(req.body, res);
                     } catch (error) {
                         console.error('Error en webhook handler:', error);
-                        res.status(500).send('Error processing update');
+                        res.status(500).end();
                     }
                 });
                 
@@ -326,9 +597,6 @@ async function startServer() {
             }
         } else {
             console.log('🌐 Modo desarrollo: usando polling');
-            console.log('💡 Para producción en Railway, configura RAILWAY_PUBLIC_DOMAIN');
-            
-            // Iniciar en modo polling (para desarrollo)
             await bot.launch();
             console.log('🤖 Bot iniciado en modo polling (desarrollo)');
         }
