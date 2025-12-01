@@ -1,16 +1,16 @@
-[phases.setup]
-cmds = ["apt-get update"]
+[build]
+builder = "nixpacks"
+buildCommand = "npm install"
 
-[phases.install]
-cmds = ["npm install"]
-
-[phases.build]
-cmds = ["npm run build --if-present"]
-
-[start]
-cmd = "node index.js"
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "on-failure"
 
 [environment]
-PORT = "3000"
 NODE_ENV = "production"
-TZ = "America/Santiago"
+PORT = "3000"
+
+[[services]]
+port = 3000
+protocol = "http"
