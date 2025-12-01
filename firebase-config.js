@@ -1,10 +1,9 @@
-// firebase-config.js
+// firebase-config.js - CON TUS CREDENCIALES REALES
 import { initializeApp } from "firebase/app";
 import { 
     getFirestore, 
     collection, 
     getDocs, 
-    getDoc,
     addDoc, 
     updateDoc, 
     deleteDoc, 
@@ -12,81 +11,88 @@ import {
     query, 
     orderBy, 
     serverTimestamp,
-    where,
-    Timestamp 
+    where 
 } from "firebase/firestore";
 
+// TUS CREDENCIALES REALES
 const firebaseConfig = {
-    apiKey: process.env.FIREBASE_API_KEY,
-    authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.FIREBASE_APP_ID,
-    measurementId: process.env.FIREBASE_MEASUREMENT_ID
+    apiKey: "AIzaSyDu88eCjKRos6_jMEhGrTiuz4I1VJgXdaY",
+    authDomain: "elreydelhuevo.firebaseapp.com",
+    projectId: "elreydelhuevo",
+    storageBucket: "elreydelhuevo.firebasestorage.app",
+    messagingSenderId: "343713842422",
+    appId: "1:343713842422:web:0637f94f7f4a45f13358d7",
+    measurementId: "G-F9TPP7GZT8"
 };
 
 // Inicializar Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+let app;
+let db;
+
+try {
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    console.log('✅ Firebase inicializado CORRECTAMENTE');
+    console.log('📊 Proyecto: elreydelhuevo');
+} catch (error) {
+    console.error('❌ ERROR Firebase:', error.message);
+}
 
 // Funciones CRUD para productos
 export const productosDB = {
     // Obtener todos los productos
     async getAll() {
         try {
-            const q = query(collection(db, 'productos'), orderBy('fechaActualizacion', 'desc'));
-            const querySnapshot = await getDocs(q);
-            return querySnapshot.docs.map(doc => ({ 
-                id: doc.id, 
-                ...doc.data(),
-                fechaCreacion: doc.data().fechaCreacion?.toDate?.() || new Date(),
-                fechaActualizacion: doc.data().fechaActualizacion?.toDate?.() || new Date()
-            }));
-        } catch (error) {
-            console.error('Error obteniendo productos:', error);
-            return [];
-        }
-    },
-    
-    // Obtener producto por ID
-    async getById(id) {
-        try {
-            const docRef = doc(db, 'productos', id);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                return { 
-                    id: docSnap.id, 
-                    ...data,
-                    fechaCreacion: data.fechaCreacion?.toDate?.() || new Date(),
-                    fechaActualizacion: data.fechaActualizacion?.toDate?.() || new Date()
-                };
+            if (!db) {
+                console.log('❌ Firebase no inicializado');
+                return [];
             }
-            return null;
+            
+            console.log('🔄 Obteniendo productos de Firebase...');
+            const q = query(collection(db, 'productos'), orderBy('nombre', 'asc'));
+            const querySnapshot = await getDocs(q);
+            const productos = querySnapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                ...doc.data() 
+            }));
+            
+            console.log(`✅ ${productos.length} productos obtenidos`);
+            return productos;
+            
         } catch (error) {
-            console.error('Error obteniendo producto por ID:', error);
-            return null;
+            console.error('❌ Error obteniendo productos:', error.message);
+            return [];
         }
     },
     
     // Crear producto
     async create(productoData) {
         try {
+            if (!db) {
+                throw new Error('Firebase no inicializado');
+            }
+            
+            console.log('🔄 Creando producto en Firebase...');
             const data = {
-                ...productoData,
+                nombre: productoData.nombre || 'Sin nombre',
+                descripcion: productoData.descripcion || '',
+                precio: productoData.precio || 0,
+                categoria: productoData.categoria || 'General',
+                imagenUrl: productoData.imagenUrl || 'https://via.placeholder.com/300x200?text=Producto',
                 fechaCreacion: serverTimestamp(),
                 fechaActualizacion: serverTimestamp()
             };
+            
             const docRef = await addDoc(collection(db, 'productos'), data);
+            console.log(`✅ Producto creado con ID: ${docRef.id}`);
+            
             return { 
                 id: docRef.id, 
-                ...productoData,
-                fechaCreacion: new Date(),
-                fechaActualizacion: new Date()
+                ...data 
             };
+            
         } catch (error) {
-            console.error('Error creando producto:', error);
+            console.error('❌ Error creando producto:', error.message);
             throw error;
         }
     },
@@ -94,17 +100,17 @@ export const productosDB = {
     // Actualizar producto
     async update(id, productoData) {
         try {
+            if (!db) throw new Error('Firebase no inicializado');
+            
             const docRef = doc(db, 'productos', id);
             const data = {
                 ...productoData,
                 fechaActualizacion: serverTimestamp()
             };
+            
             await updateDoc(docRef, data);
-            return { 
-                id, 
-                ...productoData,
-                fechaActualizacion: new Date()
-            };
+            return { id, ...data };
+            
         } catch (error) {
             console.error('Error actualizando producto:', error);
             throw error;
@@ -114,221 +120,71 @@ export const productosDB = {
     // Eliminar producto
     async delete(id) {
         try {
+            if (!db) throw new Error('Firebase no inicializado');
+            
             await deleteDoc(doc(db, 'productos', id));
             return true;
+            
         } catch (error) {
             console.error('Error eliminando producto:', error);
             throw error;
         }
-    },
-    
-    // Buscar por categoría
-    async getByCategoria(categoria) {
-        try {
-            const q = query(collection(db, 'productos'), where('categoria', '==', categoria));
-            const querySnapshot = await getDocs(q);
-            return querySnapshot.docs.map(doc => ({ 
-                id: doc.id, 
-                ...doc.data(),
-                fechaCreacion: doc.data().fechaCreacion?.toDate?.() || new Date(),
-                fechaActualizacion: doc.data().fechaActualizacion?.toDate?.() || new Date()
-            }));
-        } catch (error) {
-            console.error('Error obteniendo productos por categoría:', error);
-            return [];
-        }
     }
 };
 
-// Funciones CRUD para categorías
+// Funciones para categorías
 export const categoriasDB = {
     async getAll() {
         try {
-            const q = query(collection(db, 'categorias'), orderBy('fechaActualizacion', 'desc'));
+            if (!db) return [];
+            
+            const q = query(collection(db, 'categorias'), orderBy('nombre', 'asc'));
             const querySnapshot = await getDocs(q);
             return querySnapshot.docs.map(doc => ({ 
                 id: doc.id, 
-                ...doc.data(),
-                fechaCreacion: doc.data().fechaCreacion?.toDate?.() || new Date(),
-                fechaActualizacion: doc.data().fechaActualizacion?.toDate?.() || new Date()
+                ...doc.data() 
             }));
+            
         } catch (error) {
             console.error('Error obteniendo categorías:', error);
             return [];
         }
     },
     
-    async getById(id) {
-        try {
-            const docRef = doc(db, 'categorias', id);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                return { 
-                    id: docSnap.id, 
-                    ...data,
-                    fechaCreacion: data.fechaCreacion?.toDate?.() || new Date(),
-                    fechaActualizacion: data.fechaActualizacion?.toDate?.() || new Date()
-                };
-            }
-            return null;
-        } catch (error) {
-            console.error('Error obteniendo categoría por ID:', error);
-            return null;
-        }
-    },
-    
     async create(categoriaData) {
         try {
+            if (!db) throw new Error('Firebase no inicializado');
+            
             const data = {
                 ...categoriaData,
                 fechaCreacion: serverTimestamp(),
                 fechaActualizacion: serverTimestamp()
             };
+            
             const docRef = await addDoc(collection(db, 'categorias'), data);
-            return { 
-                id: docRef.id, 
-                ...categoriaData,
-                fechaCreacion: new Date(),
-                fechaActualizacion: new Date()
-            };
+            return { id: docRef.id, ...data };
+            
         } catch (error) {
             console.error('Error creando categoría:', error);
             throw error;
         }
-    },
-    
-    async update(id, categoriaData) {
-        try {
-            const docRef = doc(db, 'categorias', id);
-            const data = {
-                ...categoriaData,
-                fechaActualizacion: serverTimestamp()
-            };
-            await updateDoc(docRef, data);
-            return { 
-                id, 
-                ...categoriaData,
-                fechaActualizacion: new Date()
-            };
-        } catch (error) {
-            console.error('Error actualizando categoría:', error);
-            throw error;
-        }
-    },
-    
-    async delete(id) {
-        try {
-            await deleteDoc(doc(db, 'categorias', id));
-            return true;
-        } catch (error) {
-            console.error('Error eliminando categoría:', error);
-            throw error;
-        }
     }
 };
 
-// Funciones CRUD para publicaciones
-export const publicacionesDB = {
-    async getAll() {
-        try {
-            const q = query(collection(db, 'publicaciones'), orderBy('fechaActualizacion', 'desc'));
-            const querySnapshot = await getDocs(q);
-            return querySnapshot.docs.map(doc => ({ 
-                id: doc.id, 
-                ...doc.data(),
-                fechaCreacion: doc.data().fechaCreacion?.toDate?.() || new Date(),
-                fechaActualizacion: doc.data().fechaActualizacion?.toDate?.() || new Date()
-            }));
-        } catch (error) {
-            console.error('Error obteniendo publicaciones:', error);
-            return [];
-        }
-    },
-    
-    async getById(id) {
-        try {
-            const docRef = doc(db, 'publicaciones', id);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                return { 
-                    id: docSnap.id, 
-                    ...data,
-                    fechaCreacion: data.fechaCreacion?.toDate?.() || new Date(),
-                    fechaActualizacion: data.fechaActualizacion?.toDate?.() || new Date()
-                };
-            }
-            return null;
-        } catch (error) {
-            console.error('Error obteniendo publicación por ID:', error);
-            return null;
-        }
-    },
-    
-    async create(publicacionData) {
-        try {
-            const data = {
-                ...publicacionData,
-                fechaCreacion: serverTimestamp(),
-                fechaActualizacion: serverTimestamp()
-            };
-            const docRef = await addDoc(collection(db, 'publicaciones'), data);
-            return { 
-                id: docRef.id, 
-                ...publicacionData,
-                fechaCreacion: new Date(),
-                fechaActualizacion: new Date()
-            };
-        } catch (error) {
-            console.error('Error creando publicación:', error);
-            throw error;
-        }
-    },
-    
-    async update(id, publicacionData) {
-        try {
-            const docRef = doc(db, 'publicaciones', id);
-            const data = {
-                ...publicacionData,
-                fechaActualizacion: serverTimestamp()
-            };
-            await updateDoc(docRef, data);
-            return { 
-                id, 
-                ...publicacionData,
-                fechaActualizacion: new Date()
-            };
-        } catch (error) {
-            console.error('Error actualizando publicación:', error);
-            throw error;
-        }
-    },
-    
-    async delete(id) {
-        try {
-            await deleteDoc(doc(db, 'publicaciones', id));
-            return true;
-        } catch (error) {
-            console.error('Error eliminando publicación:', error);
-            throw error;
-        }
-    }
-};
-
-// Función para verificar credenciales admin
+// Verificar credenciales admin
 export async function verificarCredencialesAdmin() {
     try {
-        const credencialesRef = doc(db, 'admin', 'credenciales');
+        if (!db) return null;
+        
+        const { getDoc, doc: getDocRef } = await import('firebase/firestore');
+        const credencialesRef = getDocRef(db, 'admin', 'credenciales');
         const credencialesDoc = await getDoc(credencialesRef);
+        
         if (credencialesDoc.exists()) {
-            const data = credencialesDoc.data();
-            return {
-                usuario: data.usuario || '',
-                clave: data.clave || ''
-            };
+            return credencialesDoc.data();
         }
         return null;
+        
     } catch (error) {
         console.error('Error verificando credenciales:', error);
         return null;
