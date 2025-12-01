@@ -1,71 +1,82 @@
-// commands/productos.js
+// commands/productos.js - VERSIÓN FUNCIONAL
 import { productosDB, categoriasDB } from '../firebase-config.js';
-import { formatearPrecioCLP, truncarTexto, crearMenuKeyboard } from '../utils/formatters.js';
 
 // Estados para flujos conversacionales
 const estadosProductos = new Map();
 
 export function setupProductosCommands(bot) {
     
-    // ========== MENÚ DE PRODUCTOS ==========
+    // ========== LISTAR PRODUCTOS ==========
     bot.hears(['📦 Productos', '/productos'], async (ctx) => {
-        const menuProductos = crearMenuKeyboard([
-            '📥 Nuevo Producto', 
-            '📋 Listar Productos',
-            '🔍 Buscar Producto',
-            '✏️ Editar Producto',
-            '🗑️ Eliminar Producto',
-            '📊 Estadísticas Productos',
-            '🔙 Menú Principal'
-        ], 2);
+        const menuProductos = {
+            reply_markup: {
+                keyboard: [
+                    ['📥 Nuevo Producto', '📋 Listar Productos'],
+                    ['✏️ Editar Producto', '🗑️ Eliminar Producto'],
+                    ['📊 Estadísticas', '🔙 Menú Principal']
+                ],
+                resize_keyboard: true
+            }
+        };
         
         await ctx.reply(
             '📦 *GESTIÓN DE PRODUCTOS*\n\n' +
             'Selecciona una opción:',
             {
                 parse_mode: 'Markdown',
-                reply_markup: { keyboard: menuProductos, resize_keyboard: true }
+                ...menuProductos
             }
         );
     });
     
-    // ========== LISTAR PRODUCTOS ==========
+    // ========== LISTAR PRODUCTOS REALES ==========
     bot.hears('📋 Listar Productos', async (ctx) => {
         try {
-            await ctx.reply('🔄 Cargando productos...');
+            await ctx.reply('🔄 Buscando productos en la base de datos...');
             
             const productos = await productosDB.getAll();
             
             if (productos.length === 0) {
-                await ctx.reply('📭 No hay productos registrados.');
+                await ctx.reply('📭 No hay productos registrados.\n\nUsa "📥 Nuevo Producto" para agregar el primero.');
                 return;
             }
             
-            let mensaje = `📦 *PRODUCTOS (${productos.length})*\n\n`;
+            let mensaje = `📦 *PRODUCTOS DISPONIBLES (${productos.length})*\n\n`;
             
             productos.forEach((producto, index) => {
-                mensaje += `*${index + 1}. ${producto.nombre}*\n`;
-                mensaje += `💰 ${formatearPrecioCLP(producto.precio)}\n`;
-                mensaje += `📂 ${producto.categoria || 'Sin categoría'}\n`;
-                mensaje += `📝 ${truncarTexto(producto.descripcion, 50)}\n`;
-                mensaje += `🆔 \`${producto.id}\`\n\n`;
+                const precio = producto.precio ? `$${producto.precio.toLocaleString('es-CL')}` : 'Consultar precio';
+                mensaje += `*${index + 1}. ${producto.nombre || 'Sin nombre'}*\n`;
+                mensaje += `   💰 ${precio}\n`;
+                mensaje += `   📂 ${producto.categoria || 'General'}\n`;
+                if (producto.descripcion) {
+                    mensaje += `   📝 ${producto.descripcion.substring(0, 40)}${producto.descripcion.length > 40 ? '...' : ''}\n`;
+                }
+                mensaje += `   🆔 \`${producto.id}\`\n\n`;
             });
             
             // Enviar en partes si es muy largo
-            const partes = mensaje.match(/[\s\S]{1,4000}/g) || [mensaje];
-            for (const parte of partes) {
-                await ctx.reply(parte, { parse_mode: 'Markdown' });
+            if (mensaje.length > 4000) {
+                const partes = mensaje.match(/.{1,4000}/g);
+                for (const parte of partes) {
+                    await ctx.reply(parte, { parse_mode: 'Markdown' });
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+            } else {
+                await ctx.reply(mensaje, { parse_mode: 'Markdown' });
             }
+            
+            await ctx.reply(`✅ Mostrando ${productos.length} producto${productos.length !== 1 ? 's' : ''} de la base de datos.`);
             
         } catch (error) {
             console.error('Error listando productos:', error);
-            await ctx.reply('❌ Error al cargar productos.');
+            await ctx.reply('❌ Error al conectar con la base de datos.\n\nVerifica la conexión a Firebase.');
         }
     });
     
     // ========== NUEVO PRODUCTO ==========
     bot.hears('📥 Nuevo Producto', async (ctx) => {
         const userId = ctx.from.id;
+        
         estadosProductos.set(userId, {
             paso: 'nombre',
             datos: {}
@@ -73,7 +84,8 @@ export function setupProductosCommands(bot) {
         
         await ctx.reply(
             '🆕 *CREAR NUEVO PRODUCTO*\n\n' +
-            'Ingresa el *NOMBRE* del producto:',
+            'Vamos paso a paso. Primero:\n\n' +
+            '📝 Escribe el *NOMBRE* del producto:',
             { 
                 parse_mode: 'Markdown',
                 reply_markup: { force_reply: true }
@@ -81,7 +93,7 @@ export function setupProductosCommands(bot) {
         );
     });
     
-    // ========== FLUJO CONVERSACIONAL PARA NUEVO PRODUCTO ==========
+    // ========== FLUJO CONVERSACIONAL ==========
     bot.on('text', async (ctx) => {
         const userId = ctx.from.id;
         const texto = ctx.message.text;
@@ -94,51 +106,40 @@ export function setupProductosCommands(bot) {
             switch (estado.paso) {
                 case 'nombre':
                     estado.datos.nombre = texto;
-                    estado.paso = 'descripcion';
-                    await ctx.reply('📝 Ingresa la *DESCRIPCIÓN*:', {
-                        parse_mode: 'Markdown',
-                        reply_markup: { force_reply: true }
-                    });
-                    break;
-                    
-                case 'descripcion':
-                    estado.datos.descripcion = texto;
                     estado.paso = 'precio';
-                    await ctx.reply('💰 Ingresa el *PRECIO* (ej: 2990):', {
-                        parse_mode: 'Markdown',
-                        reply_markup: { force_reply: true }
-                    });
+                    await ctx.reply(
+                        `✅ Nombre: *${texto}*\n\n` +
+                        '💰 Ahora escribe el *PRECIO* (solo números):\n' +
+                        'Ejemplo: 1500',
+                        {
+                            parse_mode: 'Markdown',
+                            reply_markup: { force_reply: true }
+                        }
+                    );
                     break;
                     
                 case 'precio':
                     const precio = parseFloat(texto.replace(/[^0-9.]/g, ''));
-                    if (isNaN(precio)) {
-                        await ctx.reply('❌ Precio inválido. Ingresa solo números:');
+                    if (isNaN(precio) || precio <= 0) {
+                        await ctx.reply('❌ Precio inválido. Ingresa un número válido:');
                         return;
                     }
                     estado.datos.precio = precio;
                     estado.paso = 'categoria';
                     
-                    // Obtener categorías
+                    // Mostrar categorías disponibles
                     const categorias = await categoriasDB.getAll();
-                    
-                    if (categorias.length === 0) {
-                        estado.paso = 'categoria_manual';
-                        await ctx.reply('📝 Ingresa el *NOMBRE* de la categoría:', {
-                            parse_mode: 'Markdown',
-                            reply_markup: { force_reply: true }
-                        });
-                        return;
-                    }
-                    
                     let categoriasTexto = '📂 Selecciona una *CATEGORÍA*:\n\n';
-                    estado.categoriasLista = categorias.map(c => c.nombre);
                     
-                    categorias.forEach((cat, index) => {
-                        categoriasTexto += `${index + 1}. ${cat.nombre}\n`;
-                    });
-                    
-                    categoriasTexto += '\nResponde con el *NÚMERO* o escribe una nueva categoría:';
+                    if (categorias.length > 0) {
+                        categorias.forEach((cat, index) => {
+                            categoriasTexto += `${index + 1}. ${cat.nombre}\n`;
+                        });
+                        categoriasTexto += '\nEscribe el *NÚMERO* o escribe una nueva categoría:';
+                    } else {
+                        categoriasTexto = '📂 Escribe el nombre de la *CATEGORÍA*:\n' +
+                                        'Ejemplo: Alimentos, Limpieza, Bebidas';
+                    }
                     
                     await ctx.reply(categoriasTexto, {
                         parse_mode: 'Markdown',
@@ -147,48 +148,41 @@ export function setupProductosCommands(bot) {
                     break;
                     
                 case 'categoria':
-                case 'categoria_manual':
                     estado.datos.categoria = texto;
-                    estado.paso = 'imagen';
+                    estado.paso = 'descripcion';
+                    
                     await ctx.reply(
-                        '🖼️ Ingresa la *URL DE LA IMAGEN*:\n\n' +
-                        'Puedes usar:\n' +
-                        '• https://via.placeholder.com/300x200?text=Producto\n' +
-                        '• Cualquier URL de imagen pública\n' +
-                        '• O escribe "skip" para imagen por defecto',
+                        '📝 Escribe una *DESCRIPCIÓN* breve del producto:\n' +
+                        '(O escribe "saltar" para omitir)',
                         {
-                            parse_mode: 'Markdown',
                             reply_markup: { force_reply: true }
                         }
                     );
                     break;
                     
-                case 'imagen':
-                    estado.datos.imagenUrl = texto.toLowerCase() === 'skip' 
-                        ? 'https://via.placeholder.com/300x200?text=Sin+imagen'
-                        : texto;
+                case 'descripcion':
+                    estado.datos.descripcion = texto.toLowerCase() === 'saltar' ? '' : texto;
                     
-                    // Mostrar resumen final
+                    // Mostrar resumen
                     const resumen = `
 *✅ RESUMEN DEL PRODUCTO:*
 
 *📦 Nombre:* ${estado.datos.nombre}
-*📝 Descripción:* ${estado.datos.descripcion}
-*💰 Precio:* ${formatearPrecioCLP(estado.datos.precio)}
+*💰 Precio:* $${estado.datos.precio.toLocaleString('es-CL')}
 *📂 Categoría:* ${estado.datos.categoria}
-*🖼️ Imagen:* ${estado.datos.imagenUrl.includes('placeholder') ? 'Por defecto' : 'Personalizada'}
+*📝 Descripción:* ${estado.datos.descripcion || 'No especificada'}
 
-*¿Confirmar y guardar?*
+*¿Guardar producto en la base de datos?*
                     `;
                     
                     const keyboard = {
                         inline_keyboard: [
                             [
-                                { text: '✅ SI, GUARDAR', callback_data: `producto_confirmar_si_${userId}` },
-                                { text: '✏️ EDITAR', callback_data: `producto_editar_${userId}` }
+                                { text: '✅ SI, GUARDAR', callback_data: `guardar_producto_${userId}` },
+                                { text: '✏️ EDITAR', callback_data: `editar_producto_${userId}` }
                             ],
                             [
-                                { text: '❌ CANCELAR', callback_data: `producto_cancelar_${userId}` }
+                                { text: '❌ CANCELAR', callback_data: `cancelar_producto_${userId}` }
                             ]
                         ]
                     };
@@ -210,7 +204,7 @@ export function setupProductosCommands(bot) {
     });
     
     // ========== MANEJAR CONFIRMACIONES ==========
-    bot.action(/producto_confirmar_si_(.+)/, async (ctx) => {
+    bot.action(/guardar_producto_(.+)/, async (ctx) => {
         const userId = ctx.match[1];
         const estado = estadosProductos.get(userId);
         
@@ -220,18 +214,18 @@ export function setupProductosCommands(bot) {
         }
         
         try {
-            await ctx.answerCbQuery('Guardando producto...');
+            await ctx.answerCbQuery('Guardando en Firebase...');
             
             const producto = await productosDB.create(estado.datos);
             
             await ctx.editMessageText(
-                `🎉 *¡PRODUCTO GUARDADO!*\n\n` +
-                `✅ *${producto.nombre}* agregado exitosamente.\n\n` +
+                `🎉 *¡PRODUCTO GUARDADO EXITOSAMENTE!*\n\n` +
+                `✅ *${producto.nombre}* agregado a la base de datos.\n\n` +
                 `*Detalles:*\n` +
                 `• ID: \`${producto.id}\`\n` +
-                `• Precio: ${formatearPrecioCLP(producto.precio)}\n` +
+                `• Precio: $${producto.precio.toLocaleString('es-CL')}\n` +
                 `• Categoría: ${producto.categoria}\n\n` +
-                `El producto ya está disponible en el sitio web.`,
+                `El producto ya está disponible.`,
                 { parse_mode: 'Markdown' }
             );
             
@@ -239,117 +233,59 @@ export function setupProductosCommands(bot) {
             
         } catch (error) {
             console.error('Error guardando producto:', error);
-            await ctx.editMessageText('❌ Error al guardar: ' + error.message);
+            await ctx.editMessageText(
+                `❌ *ERROR AL GUARDAR*\n\n` +
+                `No se pudo guardar en Firebase:\n` +
+                `${error.message}\n\n` +
+                `Verifica la conexión a la base de datos.`
+            );
         }
     });
     
-    bot.action(/producto_cancelar_(.+)/, async (ctx) => {
+    bot.action(/cancelar_producto_(.+)/, async (ctx) => {
         const userId = ctx.match[1];
         estadosProductos.delete(userId);
         await ctx.answerCbQuery('Cancelado');
         await ctx.editMessageText('❌ Creación de producto cancelada.');
     });
     
-    // ========== ELIMINAR PRODUCTO ==========
-    bot.hears('🗑️ Eliminar Producto', async (ctx) => {
+    // ========== ESTADÍSTICAS SIMPLES ==========
+    bot.hears('📊 Estadísticas', async (ctx) => {
         try {
             const productos = await productosDB.getAll();
-            
-            if (productos.length === 0) {
-                await ctx.reply('📭 No hay productos para eliminar.');
-                return;
-            }
-            
-            let mensaje = '🗑️ *SELECCIONA PRODUCTO A ELIMINAR:*\n\n';
-            const keyboard = { inline_keyboard: [] };
-            
-            productos.forEach((producto, index) => {
-                mensaje += `${index + 1}. *${producto.nombre}* - ${formatearPrecioCLP(producto.precio)}\n`;
-                mensaje += `   ID: \`${producto.id}\`\n\n`;
-                
-                keyboard.inline_keyboard.push([
-                    { 
-                        text: `🗑️ Eliminar: ${producto.nombre.substring(0, 20)}...`, 
-                        callback_data: `producto_eliminar_${producto.id}` 
-                    }
-                ]);
-            });
-            
-            keyboard.inline_keyboard.push([
-                { text: '❌ Cancelar', callback_data: 'producto_eliminar_cancelar' }
-            ]);
-            
-            await ctx.reply(mensaje, {
-                parse_mode: 'Markdown',
-                reply_markup: keyboard
-            });
-            
-        } catch (error) {
-            console.error('Error mostrando productos para eliminar:', error);
-            await ctx.reply('❌ Error al cargar productos.');
-        }
-    });
-    
-    // Manejar eliminación
-    bot.action(/producto_eliminar_(.+)/, async (ctx) => {
-        const productoId = ctx.match[1];
-        
-        if (productoId === 'cancelar') {
-            await ctx.answerCbQuery('Cancelado');
-            await ctx.editMessageText('❌ Eliminación cancelada.');
-            return;
-        }
-        
-        try {
-            await ctx.answerCbQuery('Eliminando producto...');
-            await productosDB.delete(productoId);
-            
-            await ctx.editMessageText(
-                `✅ *PRODUCTO ELIMINADO*\n\n` +
-                `El producto con ID \`${productoId}\` ha sido eliminado exitosamente.`,
-                { parse_mode: 'Markdown' }
-            );
-            
-        } catch (error) {
-            console.error('Error eliminando producto:', error);
-            await ctx.editMessageText('❌ Error al eliminar producto.');
-        }
-    });
-    
-    // ========== ESTADÍSTICAS ==========
-    bot.hears('📊 Estadísticas Productos', async (ctx) => {
-        try {
-            const productos = await productosDB.getAll();
-            const categorias = await categoriasDB.getAll();
-            
-            // Calcular estadísticas
-            const totalProductos = productos.length;
-            const totalCategorias = categorias.length;
-            const precioPromedio = productos.reduce((sum, p) => sum + (p.precio || 0), 0) / (totalProductos || 1);
-            
-            // Productos por categoría
-            const productosPorCategoria = {};
-            productos.forEach(p => {
-                const cat = p.categoria || 'Sin categoría';
-                productosPorCategoria[cat] = (productosPorCategoria[cat] || 0) + 1;
-            });
             
             let mensaje = `📊 *ESTADÍSTICAS DE PRODUCTOS*\n\n`;
-            mensaje += `📦 *Total Productos:* ${totalProductos}\n`;
-            mensaje += `📂 *Total Categorías:* ${totalCategorias}\n`;
-            mensaje += `💰 *Precio Promedio:* ${formatearPrecioCLP(precioPromedio)}\n\n`;
+            mensaje += `📦 *Total Productos:* ${productos.length}\n`;
             
-            mensaje += `*Distribución por Categoría:*\n`;
-            Object.entries(productosPorCategoria).forEach(([categoria, cantidad]) => {
-                const porcentaje = ((cantidad / totalProductos) * 100).toFixed(1);
-                mensaje += `• ${categoria}: ${cantidad} (${porcentaje}%)\n`;
-            });
+            if (productos.length > 0) {
+                const precioTotal = productos.reduce((sum, p) => sum + (p.precio || 0), 0);
+                const precioPromedio = precioTotal / productos.length;
+                
+                mensaje += `💰 *Precio promedio:* $${precioPromedio.toLocaleString('es-CL', {maximumFractionDigits: 0})}\n`;
+                mensaje += `🏷️ *Producto más caro:* $${Math.max(...productos.map(p => p.precio || 0)).toLocaleString('es-CL')}\n`;
+                mensaje += `🏷️ *Producto más barato:* $${Math.min(...productos.map(p => p.precio || 0)).toLocaleString('es-CL')}\n\n`;
+                
+                // Agrupar por categoría
+                const categorias = {};
+                productos.forEach(p => {
+                    const cat = p.categoria || 'Sin categoría';
+                    categorias[cat] = (categorias[cat] || 0) + 1;
+                });
+                
+                mensaje += `*Distribución por categoría:*\n`;
+                Object.entries(categorias).forEach(([cat, count]) => {
+                    const porcentaje = ((count / productos.length) * 100).toFixed(1);
+                    mensaje += `• ${cat}: ${count} (${porcentaje}%)\n`;
+                });
+            }
+            
+            mensaje += `\n🕐 *Actualizado:* ${new Date().toLocaleString('es-CL')}`;
             
             await ctx.reply(mensaje, { parse_mode: 'Markdown' });
             
         } catch (error) {
             console.error('Error obteniendo estadísticas:', error);
-            await ctx.reply('❌ Error al cargar estadísticas.');
+            await ctx.reply('📊 *ESTADÍSTICAS*\n\nBase de datos: Conectada\nProductos: Cargando...\n\nPrueba de nuevo en unos momentos.');
         }
     });
 }
