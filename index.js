@@ -1,13 +1,21 @@
 // index.js - BOT COMPLETO PARA EL REY DEL HUEVO
-const { Telegraf } = require('telegraf');
-const express = require('express');
-require('dotenv').config();
+import { Telegraf, session } from 'telegraf';
+import express from 'express';
+import dotenv from 'dotenv';
+import { setupProductosCommands } from './commands/productos.js';
+import { setupCategoriasCommands } from './commands/categorias.js';
+import { setupPublicacionesCommands } from './commands/publicaciones.js';
+import { setupAdminCommands } from './commands/admin.js';
+import { setupEstadisticasCommands } from './commands/estadisticas.js';
+import { authMiddleware, loggingMiddleware } from './handlers/middleware.js';
+
+dotenv.config();
 
 // ========== CONFIGURACIÓN ==========
 const BOT_TOKEN = process.env.BOT_TOKEN || '8383198564:AAE1pbTvIBkF7eO-sT1xOPcxL55Rb8dkRcM';
 const ADMIN_USERS = process.env.ADMIN_USERS ? process.env.ADMIN_USERS.split(',') : ['6571645457'];
 const PORT = process.env.PORT || 3000;
-const RAILWAY_DOMAIN = process.env.RAILWAY_STATIC_URL || 'elreydelhuevo-bot-production.up.railway.app';
+const RAILWAY_DOMAIN = process.env.RAILWAY_STATIC_URL || process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost';
 
 console.log('='.repeat(60));
 console.log('🤖 BOT DE ADMINISTRACIÓN - EL REY DEL HUEVO 🥚');
@@ -22,22 +30,19 @@ console.log('='.repeat(60));
 const bot = new Telegraf(BOT_TOKEN);
 const app = express();
 
-// Middleware para parsear JSON
-app.use(express.json());
+// Configurar sesiones para flujos conversacionales
+bot.use(session());
 
-// ========== MIDDLEWARE DE AUTENTICACIÓN ==========
-bot.use(async (ctx, next) => {
-    const userId = ctx.from?.id?.toString();
-    
-    if (!ADMIN_USERS.includes(userId)) {
-        console.log(`🚫 Acceso denegado: ${userId}`);
-        await ctx.reply('❌ No tienes permisos para usar este bot.');
-        return;
-    }
-    
-    console.log(`✅ Usuario autorizado: ${ctx.from.first_name} (${userId})`);
-    await next();
-});
+// Middleware de autenticación y logging
+bot.use(authMiddleware(ADMIN_USERS));
+bot.use(loggingMiddleware());
+
+// ========== IMPORTAR Y CONFIGURAR MÓDULOS ==========
+setupProductosCommands(bot);
+setupCategoriasCommands(bot);
+setupPublicacionesCommands(bot);
+setupAdminCommands(bot);
+setupEstadisticasCommands(bot);
 
 // ========== COMANDOS PRINCIPALES ==========
 
@@ -50,7 +55,8 @@ bot.start(async (ctx) => {
             keyboard: [
                 ['📦 Productos', '📂 Categorías'],
                 ['📰 Publicaciones', '📊 Estadísticas'],
-                ['⚙️ Configuración', '🆘 Ayuda']
+                ['⚙️ Configuración', '🔐 Verificar Acceso'],
+                ['🆘 Ayuda', 'ℹ️ Información Sistema']
             ],
             resize_keyboard: true
         }
@@ -67,7 +73,8 @@ bot.start(async (ctx) => {
         `📂 *Categorías* - Organización por tipo\n` +
         `📰 *Publicaciones* - Noticias y promociones\n` +
         `📊 *Estadísticas* - Reportes del sitio\n` +
-        `⚙️ *Configuración* - Información del sistema\n\n` +
+        `⚙️ *Configuración* - Información del sistema\n` +
+        `🔐 *Verificar Acceso* - Credenciales admin\n\n` +
         `*📍 TU NEGOCIO:*\n` +
         `🏪 El Rey del Huevo\n` +
         `📞 +56950104100\n` +
@@ -86,8 +93,9 @@ bot.hears('📦 Productos', async (ctx) => {
         reply_markup: {
             keyboard: [
                 ['📥 Nuevo Producto', '📋 Listar Productos'],
-                ['✏️ Editar Producto', '🗑️ Eliminar Producto'],
-                ['📊 Estadísticas Productos', '🔙 Menú Principal']
+                ['🔍 Buscar Producto', '✏️ Editar Producto'],
+                ['🗑️ Eliminar Producto', '📊 Estadísticas Productos'],
+                ['🔙 Menú Principal']
             ],
             resize_keyboard: true
         }
@@ -98,6 +106,7 @@ bot.hears('📦 Productos', async (ctx) => {
         'Selecciona una opción:\n\n' +
         '📥 *Nuevo Producto* - Agregar producto al catálogo\n' +
         '📋 *Listar Productos* - Ver todos los productos\n' +
+        '🔍 *Buscar Producto* - Encontrar por nombre o categoría\n' +
         '✏️ *Editar Producto* - Modificar información\n' +
         '🗑️ *Eliminar Producto* - Remover del catálogo\n' +
         '📊 *Estadísticas* - Reportes de inventario\n\n' +
@@ -109,140 +118,119 @@ bot.hears('📦 Productos', async (ctx) => {
     );
 });
 
-// NUEVO PRODUCTO (ejemplo de flujo)
-bot.hears('📥 Nuevo Producto', async (ctx) => {
+// MENÚ CATEGORÍAS
+bot.hears('📂 Categorías', async (ctx) => {
+    const menuCategorias = {
+        reply_markup: {
+            keyboard: [
+                ['🆕 Nueva Categoría', '📋 Listar Categorías'],
+                ['✏️ Editar Categoría', '🗑️ Eliminar Categoría'],
+                ['📊 Productos por Categoría', '🔙 Menú Principal']
+            ],
+            resize_keyboard: true
+        }
+    };
+    
     await ctx.reply(
-        '📥 *AGREGAR NUEVO PRODUCTO*\n\n' +
-        'Esta función te guiará paso a paso:\n\n' +
-        '1. 📝 Nombre del producto\n' +
-        '2. 📄 Descripción detallada\n' +
-        '3. 💰 Precio en CLP\n' +
-        '4. 📂 Categoría\n' +
-        '5. 🖼️ Imagen (opcional)\n\n' +
-        '¿Listo para comenzar? Responde con el *NOMBRE* del producto:',
+        '📂 *GESTIÓN COMPLETA DE CATEGORÍAS*\n\n' +
+        'Selecciona una opción:\n\n' +
+        '🆕 *Nueva Categoría* - Crear categoría\n' +
+        '📋 *Listar Categorías* - Ver todas las categorías\n' +
+        '✏️ *Editar Categoría* - Modificar categoría\n' +
+        '🗑️ *Eliminar Categoría* - Eliminar categoría\n' +
+        '📊 *Productos por Categoría* - Ver distribución\n\n' +
+        'Organiza tus productos eficientemente',
         { 
             parse_mode: 'Markdown',
-            reply_markup: { force_reply: true }
+            ...menuCategorias 
         }
     );
 });
 
-// LISTAR PRODUCTOS
-bot.hears('📋 Listar Productos', async (ctx) => {
+// MENÚ PUBLICACIONES
+bot.hears('📰 Publicaciones', async (ctx) => {
+    const menuPublicaciones = {
+        reply_markup: {
+            keyboard: [
+                ['🆕 Nueva Publicación', '📋 Listar Publicaciones'],
+                ['✏️ Editar Publicación', '🗑️ Eliminar Publicación'],
+                ['📊 Estadísticas Publicaciones', '🔙 Menú Principal']
+            ],
+            resize_keyboard: true
+        }
+    };
+    
     await ctx.reply(
-        '🔄 *CARGANDO PRODUCTOS...*\n\n' +
-        'Conectando a Firebase para obtener el catálogo actual.\n\n' +
-        '✅ *Productos disponibles:*\n' +
-        '(Esta función se conectará a tu base de datos)\n\n' +
-        '📊 *Próximamente:*\n' +
-        '• Lista completa con imágenes\n' +
-        '• Filtros por categoría\n' +
-        '• Búsqueda por nombre\n' +
-        '• Paginación automática',
-        { parse_mode: 'Markdown' }
+        '📰 *GESTIÓN COMPLETA DE PUBLICACIONES*\n\n' +
+        'Selecciona una opción:\n\n' +
+        '🆕 *Nueva Publicación* - Crear noticia o promoción\n' +
+        '📋 *Listar Publicaciones* - Ver todas las publicaciones\n' +
+        '✏️ *Editar Publicación* - Modificar publicación\n' +
+        '🗑️ *Eliminar Publicación* - Eliminar publicación\n' +
+        '📊 *Estadísticas* - Reportes de actividad\n\n' +
+        'Mantén informados a tus clientes',
+        { 
+            parse_mode: 'Markdown',
+            ...menuPublicaciones 
+        }
     );
 });
 
-// MENÚ CATEGORÍAS
-bot.hears('📂 Categorías', async (ctx) => {
-    await ctx.reply(
-        '📂 *GESTIÓN DE CATEGORÍAS*\n\n' +
-        'Organiza tus productos por tipo:\n\n' +
-        '🛒 *Categorías disponibles:*\n' +
-        '• 🧹 Aseo y limpieza\n' +
-        '• 🍎 Alimentos y bebidas\n' +
-        '• 🏠 Productos del hogar\n' +
-        '• 🧴 Higiene personal\n' +
-        '• 📦 Abarrotes\n\n' +
-        '*Funciones:*\n' +
-        '• Crear nuevas categorías\n' +
-        '• Asignar productos\n' +
-        '• Estadísticas por categoría\n' +
-        '• Gestión completa',
-        { parse_mode: 'Markdown' }
-    );
-});
-
-// ESTADÍSTICAS
+// MENÚ ESTADÍSTICAS
 bot.hears('📊 Estadísticas', async (ctx) => {
-    const stats = `
-📊 *ESTADÍSTICAS DEL SISTEMA*
-
-🤖 *BOT:*
-• Estado: ✅ OPERATIVO
-• Modo: Webhook 24/7
-• Uptime: Recién implementado
-• Versión: 2.0.0
-
-👤 *USUARIO:*
-• Nombre: ${ctx.from.first_name}
-• ID: ${ctx.from.id}
-• Tipo: Administrador
-
-🌐 *SERVIDOR:*
-• Plataforma: Railway.app
-• Dominio: ${RAILWAY_DOMAIN}
-• Puerto: ${PORT}
-• Node.js: 18+
-
-🏪 *NEGOCIO:*
-• Nombre: El Rey del Huevo
-• Productos: Gestión activa
-• Categorías: Configurables
-• Publicaciones: Disponible
-
-📅 *INFORMACIÓN:*
-• Hora: ${new Date().toLocaleString('es-CL')}
-• Implementado: Hoy
-• Status: ✅ TODO FUNCIONANDO
-    `;
+    const menuEstadisticas = {
+        reply_markup: {
+            keyboard: [
+                ['📊 Estadísticas Completas', '📈 Reporte Detallado'],
+                ['📋 Ver Logs', '💾 Backup Datos'],
+                ['🔙 Menú Principal']
+            ],
+            resize_keyboard: true
+        }
+    };
     
-    await ctx.reply(stats, { parse_mode: 'Markdown' });
+    await ctx.reply(
+        '📊 *ESTADÍSTICAS Y REPORTES*\n\n' +
+        'Selecciona una opción:\n\n' +
+        '📊 *Estadísticas Completas* - Visión general\n' +
+        '📈 *Reporte Detallado* - Análisis específico\n' +
+        '📋 *Ver Logs* - Actividad del sistema\n' +
+        '💾 *Backup Datos* - Información de respaldos\n\n' +
+        'Monitorea el rendimiento de tu negocio',
+        { 
+            parse_mode: 'Markdown',
+            ...menuEstadisticas 
+        }
+    );
 });
 
-// CONFIGURACIÓN
+// MENÚ CONFIGURACIÓN
 bot.hears('⚙️ Configuración', async (ctx) => {
-    const config = `
-⚙️ *INFORMACIÓN DE CONFIGURACIÓN*
-
-🔐 *ACCESO:*
-• Usuario: ${ctx.from.first_name}
-• ID: ${ctx.from.id}
-• Nivel: Administrador completo
-• Token: ${BOT_TOKEN.substring(0, 10)}...
-
-🌐 *WEBHOOK:*
-• URL: https://${RAILWAY_DOMAIN}/webhook
-• Estado: ✅ CONFIGURADO
-• SSL: ✅ ACTIVO (Railway)
-• Método: POST
-
-🔥 *FIREBASE:*
-• Proyecto: elreydelhuevo
-• Estado: ✅ CONECTADO
-• Colecciones: productos, categorías, publicaciones
-• Sincronización: Automática
-
-🚂 *RAILWAY:*
-• Servicio: Node.js
-• Dominio: ${RAILWAY_DOMAIN}
-• Puerto: ${PORT}
-• Region: Automática
-• Plan: Gratuito
-
-🛠️ *TÉCNICO:*
-• Código: GitHub
-• Deploy: Automático
-• Logs: Railway Dashboard
-• Backup: Firebase automático
-
-📞 *CONTACTO TÉCNICO:*
-• Soporte: Implementación hoy
-• Estado: ✅ SISTEMA OPERATIVO
-• Próxima actualización: Funciones CRUD
-    `;
+    const menuConfig = {
+        reply_markup: {
+            keyboard: [
+                ['🔐 Verificar Acceso', 'ℹ️ Información Sistema'],
+                ['📋 Ver Logs', '🔄 Reiniciar Bot'],
+                ['💾 Backup Datos', '🔙 Menú Principal']
+            ],
+            resize_keyboard: true
+        }
+    };
     
-    await ctx.reply(config, { parse_mode: 'Markdown' });
+    await ctx.reply(
+        '⚙️ *CONFIGURACIÓN DEL SISTEMA*\n\n' +
+        'Selecciona una opción:\n\n' +
+        '🔐 *Verificar Acceso* - Credenciales admin\n' +
+        'ℹ️ *Información Sistema* - Detalles técnicos\n' +
+        '📋 *Ver Logs* - Registros de actividad\n' +
+        '🔄 *Reiniciar Bot* - Reiniciar servicio\n' +
+        '💾 *Backup Datos* - Información de respaldos\n\n' +
+        'Administra tu sistema eficientemente',
+        { 
+            parse_mode: 'Markdown',
+            ...menuConfig 
+        }
+    );
 });
 
 // AYUDA
@@ -256,35 +244,43 @@ bot.hears('🆘 Ayuda', async (ctx) => {
 /info - Información del sistema
 
 📦 *GESTIÓN DE PRODUCTOS:*
-• Agregar productos nuevos
-• Ver catálogo completo
-• Editar información
-• Eliminar productos
-• Estadísticas de inventario
+• 📥 Nuevo Producto - Agregar productos
+• 📋 Listar Productos - Ver catálogo completo
+• 🔍 Buscar Producto - Encontrar específicos
+• ✏️ Editar Producto - Modificar información
+• 🗑️ Eliminar Producto - Remover productos
+• 📊 Estadísticas Productos - Reportes
 
 📂 *GESTIÓN DE CATEGORÍAS:*
-• Crear categorías
-• Organizar productos
-• Ver por categoría
-• Estadísticas por tipo
+• 🆕 Nueva Categoría - Crear categorías
+• 📋 Listar Categorías - Ver categorías
+• ✏️ Editar Categoría - Modificar categorías
+• 🗑️ Eliminar Categoría - Eliminar categorías
+• 📊 Productos por Categoría - Distribución
 
 📰 *GESTIÓN DE PUBLICACIONES:*
-• Crear noticias
-• Publicar promociones
-• Gestionar contenido
-• Programar publicaciones
+• 🆕 Nueva Publicación - Crear contenido
+• 📋 Listar Publicaciones - Ver publicaciones
+• ✏️ Editar Publicación - Modificar publicaciones
+• 🗑️ Eliminar Publicación - Eliminar contenido
+• 📊 Estadísticas Publicaciones - Reportes
 
 📊 *ESTADÍSTICAS:*
-• Reportes de inventario
-• Análisis por categoría
-• Valor del stock
-• Actividad reciente
+• 📊 Estadísticas Completas - Visión general
+• 📈 Reporte Detallado - Análisis específico
+• 📋 Ver Logs - Actividad del sistema
+• 💾 Backup Datos - Información de respaldos
+
+⚙️ *CONFIGURACIÓN:*
+• 🔐 Verificar Acceso - Credenciales
+• ℹ️ Información Sistema - Detalles técnicos
+• 🔄 Reiniciar Bot - Reiniciar servicio
 
 💡 *CONSEJOS:*
-1. Usa los botones del menú
-2. Sigue los pasos indicados
-3. Los cambios se sincronizan automáticamente
-4. Revisa estadísticas regularmente
+1. Usa los botones del menú para navegar
+2. Sigue los pasos indicados en cada flujo
+3. Los cambios se sincronizan automáticamente con Firebase
+4. Revisa las estadísticas regularmente
 
 📞 *SOPORTE:*
 • WhatsApp: +56950104100
@@ -292,33 +288,14 @@ bot.hears('🆘 Ayuda', async (ctx) => {
 • Instagram: @rey_del_huevo
 • Ubicación: Av. Nueva Koke 1102
 
-✅ *IMPLEMENTADO HOY:*
+✅ *SISTEMA OPERATIVO:*
 • Bot 24/7 en Railway
 • Webhook configurado
-• Conexión Firebase
-• Panel completo
+• Conexión Firebase activa
+• Panel completo funcional
     `;
     
     await ctx.reply(ayuda, { parse_mode: 'Markdown' });
-});
-
-// VOLVER AL MENÚ PRINCIPAL
-bot.hears('🔙 Menú Principal', async (ctx) => {
-    const menuPrincipal = {
-        reply_markup: {
-            keyboard: [
-                ['📦 Productos', '📂 Categorías'],
-                ['📰 Publicaciones', '📊 Estadísticas'],
-                ['⚙️ Configuración', '🆘 Ayuda']
-            ],
-            resize_keyboard: true
-        }
-    };
-    
-    await ctx.reply('🏠 *Volviendo al Menú Principal*', {
-        parse_mode: 'Markdown',
-        ...menuPrincipal
-    });
 });
 
 // COMANDO /info
@@ -331,19 +308,72 @@ bot.command('info', async (ctx) => {
         `*Webhook:* ✅ ACTIVO\n` +
         `*Firebase:* ✅ CONECTADO\n` +
         `*Railway:* ✅ OPERATIVO\n` +
-        `*Hora servidor:* ${new Date().toLocaleString('es-CL')}`,
+        `*Hora servidor:* ${new Date().toLocaleString('es-CL')}\n\n` +
+        `*Módulos cargados:*\n` +
+        `✅ Productos (CRUD completo)\n` +
+        `✅ Categorías (CRUD completo)\n` +
+        `✅ Publicaciones (CRUD completo)\n` +
+        `✅ Estadísticas (Reportes)\n` +
+        `✅ Administración (Configuración)`,
         { parse_mode: 'Markdown' }
     );
+});
+
+// COMANDO /help
+bot.command('help', async (ctx) => {
+    await ctx.reply(
+        `🆘 *AYUDA RÁPIDA*\n\n` +
+        `Usa los botones del menú para acceder a todas las funciones.\n\n` +
+        `📦 *Gestión de Productos:*\n` +
+        `- Agregar, editar, eliminar productos\n` +
+        `- Ver catálogo completo\n` +
+        `- Estadísticas de inventario\n\n` +
+        `📂 *Gestión de Categorías:*\n` +
+        `- Organizar productos por tipo\n` +
+        `- Ver distribución por categoría\n\n` +
+        `📰 *Gestión de Publicaciones:*\n` +
+        `- Crear noticias y promociones\n` +
+        `- Gestionar contenido del sitio\n\n` +
+        `📊 *Estadísticas:*\n` +
+        `- Reportes completos\n` +
+        `- Análisis del inventario\n\n` +
+        `⚙️ *Configuración:*\n` +
+        `- Verificar acceso\n` +
+        `- Información del sistema\n` +
+        `- Logs y backup\n\n` +
+        `Escribe /start para volver al menú principal.`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+// VOLVER AL MENÚ PRINCIPAL
+bot.hears('🔙 Menú Principal', async (ctx) => {
+    const menuPrincipal = {
+        reply_markup: {
+            keyboard: [
+                ['📦 Productos', '📂 Categorías'],
+                ['📰 Publicaciones', '📊 Estadísticas'],
+                ['⚙️ Configuración', '🔐 Verificar Acceso'],
+                ['🆘 Ayuda', 'ℹ️ Información Sistema']
+            ],
+            resize_keyboard: true
+        }
+    };
+    
+    await ctx.reply('🏠 *Volviendo al Menú Principal*', {
+        parse_mode: 'Markdown',
+        ...menuPrincipal
+    });
 });
 
 // MENSAJES NO RECONOCIDOS
 bot.on('text', async (ctx) => {
     const text = ctx.message.text;
     
-    // Si no es un comando del menú
-    const comandosMenu = ['📦 Productos', '📂 Categorías', '📊 Estadísticas', '⚙️ Configuración', '🆘 Ayuda', '🔙 Menú Principal'];
-    
-    if (!comandosMenu.includes(text) && !text.startsWith('/')) {
+    // Si no es un comando del menú y no empieza con /
+    if (!text.startsWith('/')) {
+        // Verificar si está en algún flujo conversacional
+        // Si no, mostrar mensaje de ayuda
         await ctx.reply(
             '🤔 *No reconozco ese comando*\n\n' +
             'Usa los botones del menú o escribe /start para ver todas las opciones.\n\n' +
@@ -545,25 +575,25 @@ app.get('/', (req, res) => {
             <div class="header">
                 <h1>🤖 El Rey del Huevo Bot 🥚</h1>
                 <p>Servicio de administración vía Telegram - 24/7</p>
-                <div class="status-badge">✅ SISTEMA OPERATIVO</div>
+                <div class="status-badge">✅ SISTEMA OPERATIVO - CRUD COMPLETO</div>
             </div>
             
             <div class="stats">
                 <div class="stat-item">
-                    <span class="stat-number">24/7</span>
-                    <span class="stat-label">Disponibilidad</span>
+                    <span class="stat-number">📦</span>
+                    <span class="stat-label">Productos CRUD</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-number">✅</span>
-                    <span class="stat-label">Webhook Activo</span>
+                    <span class="stat-number">📂</span>
+                    <span class="stat-label">Categorías CRUD</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">📰</span>
+                    <span class="stat-label">Publicaciones CRUD</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-number">🔥</span>
                     <span class="stat-label">Firebase</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number">🚂</span>
-                    <span class="stat-label">Railway</span>
                 </div>
             </div>
             
@@ -610,7 +640,7 @@ app.get('/', (req, res) => {
             
             <div class="footer">
                 <p>🤖 Bot de Administración - El Rey del Huevo 🥚</p>
-                <p>Versión 2.0.0 | Implementado hoy: ${new Date().toLocaleDateString('es-CL')}</p>
+                <p>Versión 2.0.0 | Sistema CRUD Completo</p>
                 <p>© 2024 El Rey del Huevo. Todos los derechos reservados.</p>
                 <p style="margin-top: 10px; font-size: 0.8rem;">
                     Desarrollado con ❤️ para la comunidad
@@ -637,34 +667,6 @@ app.get('/', (req, res) => {
             // Actualizar cada segundo
             setInterval(updateTime, 1000);
             updateTime();
-            
-            // Efecto hover en tarjetas
-            document.querySelectorAll('.info-card').forEach(card => {
-                card.addEventListener('mouseenter', function() {
-                    this.style.transform = 'translateY(-8px)';
-                    this.style.boxShadow = '0 15px 40px rgba(0,0,0,0.4)';
-                });
-                
-                card.addEventListener('mouseleave', function() {
-                    this.style.transform = 'translateY(0)';
-                    this.style.boxShadow = 'none';
-                });
-            });
-            
-            // Verificar estado del servicio
-            async function checkHealth() {
-                try {
-                    const response = await fetch('/health');
-                    const data = await response.json();
-                    console.log('✅ Health check:', data.status);
-                } catch (error) {
-                    console.log('⚠️ Health check temporalmente no disponible');
-                }
-            }
-            
-            // Verificar cada 30 segundos
-            setInterval(checkHealth, 30000);
-            checkHealth();
         </script>
     </body>
     </html>
@@ -688,7 +690,7 @@ app.get('/health', (req, res) => {
         bot: {
             token: BOT_TOKEN ? 'configured' : 'missing',
             admin_users: ADMIN_USERS.length,
-            commands: 'active'
+            modules: ['productos', 'categorias', 'publicaciones', 'estadisticas', 'admin']
         },
         server: {
             port: PORT,
@@ -704,7 +706,8 @@ app.get('/webhook-info', (req, res) => {
         webhook_url: `https://${RAILWAY_DOMAIN}${WEBHOOK_PATH}`,
         telegram_api: 'https://api.telegram.org',
         bot_username: '@ElReyDelHuevoBot',
-        setup_instructions: 'Webhook configurado automáticamente'
+        setup_instructions: 'Webhook configurado automáticamente',
+        modules_loaded: true
     });
 });
 
@@ -720,6 +723,7 @@ async function initialize() {
             console.log(`❤️  Health check: https://${RAILWAY_DOMAIN}/health`);
             console.log(`🔧 Webhook info: https://${RAILWAY_DOMAIN}/webhook-info`);
             console.log(`📱 Bot: @ElReyDelHuevoBot`);
+            console.log(`📦 Módulos cargados: Productos, Categorías, Publicaciones, Estadísticas, Admin`);
             console.log('='.repeat(60));
             
             // Configurar webhook en Telegram automáticamente
@@ -733,6 +737,7 @@ async function initialize() {
                     console.log('🎉 ✅ WEBHOOK CONFIGURADO EXITOSAMENTE!');
                     console.log('📱 Busca @ElReyDelHuevoBot en Telegram');
                     console.log('💬 Envía /start para comenzar');
+                    console.log('📦 CRUD completo disponible');
                     console.log('='.repeat(60));
                 })
                 .catch(error => {
@@ -766,5 +771,5 @@ process.once('SIGTERM', () => {
 
 // ========== INICIAR TODO ==========
 
-console.log('🚀 Iniciando sistema...');
+console.log('🚀 Iniciando sistema CRUD completo...');
 initialize();
