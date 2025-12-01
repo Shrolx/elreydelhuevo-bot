@@ -2,11 +2,15 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm install"
+    "buildCommand": "npm install",
+    "nixpacksConfigPath": "./nixpacks.toml"
   },
   "deploy": {
     "numReplicas": 1,
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
+    "restartPolicyMaxRetries": 10,
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 60,
+    "startCommand": "npm start"
   }
 }
